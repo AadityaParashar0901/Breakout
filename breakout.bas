@@ -1,3 +1,9 @@
+'                     Google Breakout Clone
+'                      by Aaditya Parashar
+'
+' Just Press F5... You have 3 balls to lose
+'                  You will get more balls when you reach level 5
+
 '$Dynamic
 '$Include:'vector.bi'
 
@@ -7,35 +13,51 @@ Dim Shared TOTAL_BRICKS As _Unsigned Integer
 TOTAL_BRICKS = 8
 
 Const BALL_RADIUS = 10
+Const INITIAL_BALL_SPEED = 500
 Const PADDLE_SIZE = 100
-Const PADDLE_ERROR = 10
 
+Const AI = 0
+Const AI_PADDLE_SPEED = 10
 Const GAME_SOUND = 1
 Const FPS = 60
+Const MOUSE_SENSITIVITY = 1 ' Ratio
+Const KEYBOARD_SENSITIVITY = 10 ' Ratio
 
-Const BRICK_SIZE_X = 50
-Const BRICK_SIZE_Y = 20
+Const BRICK_SIZE_X = 40
+Const BRICK_SIZE_Y = 15
+
+Const PADDLE_ERROR = PADDLE_SIZE / 10
+Const MAX_LENGTH_OF_SOUND = 4
 
 Type Ball
     As Vec2 Position
     As Vec2 Velocity, oldVelocity
     As Long IMAGE
+    As _Unsigned Integer BrickCount
 End Type
 Type Brick
     As Vec2 Position, FinalPosition
-    As _Unsigned _Byte Alive, Money
+    As _Unsigned _Byte Alive, Power
     As Long Colour
+End Type
+Type PowerUp
+    As Vec2 Position
+    As _Unsigned _Byte Power
 End Type
 
 Screen _NewImage(960, 540, 32)
-Color -1, _RGBA32(0, 0, 0, 127)
+Color -1, 0
+_FullScreen _SquarePixels , _Smooth
 _Title "Breakout"
 _MouseHide
 
-Dim Shared Balls(0) As Ball, TOTAL_BALLS As _Unsigned Integer, BACKUP_BALLS As _Unsigned Integer, MAX_BALL_SPEED As _Unsigned Integer
-Dim Shared Level As _Unsigned Integer
+Dim Shared Balls(0) As Ball, TOTAL_BALLS As _Unsigned Integer, BACKUP_BALLS As _Unsigned Integer, MAX_BALL_SPEED As _Unsigned Integer: MAX_BALL_SPEED = INITIAL_BALL_SPEED
+Dim Shared Level As _Unsigned Integer, LevelText$
 Dim Shared As Vec2 Paddle
-Dim Shared As Brick Bricks(0)
+Dim Shared As Brick Bricks(0), AI_Target_Brick
+
+Dim Shared Available_Powers$: Available_Powers$ = Chr$(1)
+Dim Shared PowerUps(0 To 255) As PowerUp, CurrentPowerUps(0 To 255)
 
 Dim Shared As Vec2 ParticlesPosition(0 To 255), ParticlesVelocity(0 To 255)
 Dim Shared As Long ParticlesColour(0 To 255)
@@ -48,17 +70,17 @@ CreateBall
 Dim Shared As _Unsigned _Byte LevelShowTimer
 NewLevel
 
-Dim Shared As _Unsigned Long Score
+Dim Shared As _Unsigned Long Score, BricksComboCount
 
 Do
     _Limit FPS
     Cls , _RGB32(15)
     If _WindowHasFocus = 0 Then _Continue
     While _MouseInput
-        Paddle.X = Clamp(PADDLE_SIZE / 2, Paddle.X + _MouseMovementX, _Width - PADDLE_SIZE / 2)
+        Paddle.X = Clamp(PADDLE_SIZE / 2, Paddle.X + _MouseMovementX * MOUSE_SENSITIVITY, _Width - PADDLE_SIZE / 2)
         _MouseMove _Width / 2, _Height / 2
     Wend
-    Paddle.X = Clamp(PADDLE_SIZE / 2, Paddle.X + (_KeyDown(19200) - _KeyDown(19712)) * 10, _Width - PADDLE_SIZE / 2)
+    Paddle.X = Clamp(PADDLE_SIZE / 2, Paddle.X + (_KeyDown(19200) - _KeyDown(19712)) * KEYBOARD_SENSITIVITY, _Width - PADDLE_SIZE / 2)
     For B = LBound(Balls) To UBound(Balls)
         If Vec2Length(Balls(B).Velocity) = 0 Then
             NewVec2 Balls(B).Position, Paddle.X, Paddle.Y - BALL_RADIUS
@@ -78,6 +100,7 @@ Do
         If InRange(Paddle.X - PADDLE_SIZE / 2 - PADDLE_ERROR, Balls(B).Position.X, Paddle.X + PADDLE_SIZE / 2 + PADDLE_ERROR) And Balls(B).Position.Y + Balls(B).Velocity.Y / FPS + BALL_RADIUS > Paddle.Y And Balls(B).Velocity.Y > 0 Then
             Balls(B).Velocity.Y = -Balls(B).Velocity.Y
             Balls(B).Velocity.X = 10 * (Balls(B).Position.X - Paddle.X)
+            BricksComboCount = 0
         End If
         '------------------------------
         'Simulate Ball Brick Collision
@@ -101,11 +124,17 @@ Do
                 If Balls(B).Position.Y > Bricks(I).Position.Y And Balls(B).Velocity.Y < 0 Then Balls(B).Velocity.Y = -Balls(B).Velocity.Y
             End If
             Bricks(I).Alive = 0
-            Score = Score + 5 * TOTAL_BALLS
+            BricksComboCount = BricksComboCount + 1
+            Balls(B).BrickCount = Balls(B).BrickCount + 1
+            Score = Score + 5 * TOTAL_BALLS * BricksComboCount
             Score = Score - 5 * (COLLISION_FROM_TOP Or COLLISION_FROM_BOTTOM Or COLLISION_FROM_LEFT Or COLLISION_FROM_RIGHT)
-            Money = Money + Bricks(I).Money
             Particles Bricks(I).Position.X, Bricks(I).Position.Y, Bricks(I).Colour
             PlaySound 2
+            Power Bricks(I).Position.X, Bricks(I).Position.Y, Bricks(I).Power
+
+            If Bricks(I).Alive Then
+                AI_Target_Brick = Bricks(I)
+            End If
         Next I
         '-----------------------------
         If BRICKS_COUNT = 0 Then
@@ -115,6 +144,11 @@ Do
         If Vec2RoundEqual(Balls(B).Velocity, Balls(B).oldVelocity) = 0 Then
             Balls(B).oldVelocity = Balls(B).Velocity
             PlaySound 1
+            T = PADDLE_SIZE * (Rnd - 0.5) / 2
+        End If
+        If AI Then
+            dX = Balls(B).Position.X - Paddle.X + T
+            If Balls(B).Position.Y > _Height * 0.6 Then Paddle.X = Paddle.X + Sgn(dX) * Min(Abs(dX), AI_PADDLE_SPEED)
         End If
     Next B
 
@@ -122,14 +156,20 @@ Do
     DrawBalls
     DrawBackupBalls
     DrawPaddle
+    DrawPowerUps
     PlaySound 0
     Particles 0, 0, 0
+    Power 0, 0, 0
 
     Print "Score:"; Score
+    If BricksComboCount > 1 Then
+        CenterPrint "Combo x" + _Trim$(Str$(BricksComboCount)) + " (" + _Trim$(Str$(5 * TOTAL_BALLS * SumTo(BricksComboCount, 1))) + ")", 1
+    End If
     If LevelShowTimer < 180 Then
         CenterPrint "Level" + Str$(Level), 0
         LevelShowTimer = LevelShowTimer + Sgn(255 - LevelShowTimer)
     End If
+    _PrintString (_Width / 2 - _FontWidth * Len(LevelText$) / 2, 0), LevelText$
     _Display
 
     If BACKUP_BALLS + TOTAL_BALLS = 0 Then
@@ -138,11 +178,11 @@ Do
         PlaySound 4
         CenterPrint "You Lose", -1
         CenterPrint "Score" + Str$(Score), 0
-        For I = 1 To 10
-            PlaySound 4
+        For I = 1 To MAX_LENGTH_OF_SOUND
+            PlaySound 0
         Next I
         Sleep 1
-        CenterPrint "Play Again (Y/N)?", 1
+        CenterPrint "Play Again (Y/N)?", 2
         Sleep
         If _KeyDown(89) Or _KeyDown(121) Then Run Else Exit Do
     ElseIf TOTAL_BALLS = 0 Then
@@ -152,13 +192,20 @@ Do
 Loop Until Inp(&H60) = 1
 System
 
+Function SumTo~& (X As _Unsigned Integer, S As _Unsigned Integer)
+    For __I~& = 1 To X Step S
+        __SUM~& = __SUM~& + __I~&
+    Next __I~&
+    SumTo~& = __SUM~&
+End Function
+
 Sub CenterPrint (T$, N)
     _PrintString (_Width / 2 - Len(T$) * _FontWidth / 2, _Height / 2 + _FontHeight * (N - 0.5)), T$
 End Sub
 
-Sub PlaySound (C)
-    Static lC, O
-    If (C And O = 10) Or lC < C Then
+Sub PlaySound (C As _Unsigned _Byte)
+    Static As _Unsigned _Byte lC, O
+    If (C And O = MAX_LENGTH_OF_SOUND) Or lC < C Then
         lC = C
         O = 1
     End If
@@ -170,28 +217,21 @@ Sub PlaySound (C)
             End Select
         Case 2: 'Brick
             Select Case O
-                Case 1: Sound 300, 1
-                Case 2: Sound 350, 1
-                Case 3: Sound 400, 1
+                Case 1: Sound 400, 1
             End Select
         Case 3: 'New Level
             Select Case O
                 Case 1: Sound 600, 1
-                Case 2: Sound 600, 1
-                Case 3: Sound 900, 1
-                Case 4: Sound 900, 1
+                Case 2: Sound 900, 1
             End Select
         Case 4: 'Lose
             Select Case O
                 Case 1: Sound 600, 1
-                Case 2: Sound 600, 1
-                Case 3: Sound 450, 1
-                Case 4: Sound 450, 1
-                Case 5: Sound 300, 1
-                Case 6: Sound 300, 1
+                Case 2: Sound 450, 1
+                Case 3: Sound 300, 1
             End Select
     End Select
-    O = O + Sgn(10 - O)
+    O = O + Sgn(MAX_LENGTH_OF_SOUND - O)
 End Sub
 
 Function Vec2Equal (__V1 As Vec2, __V2 As Vec2)
@@ -220,11 +260,38 @@ Sub Particles (X As Integer, Y As Integer, C&)
             If InRange(Paddle.X - PADDLE_SIZE / 2, ParticlesPosition(I).X, Paddle.X + PADDLE_SIZE / 2) And ParticlesPosition(I).Y + BALL_RADIUS > Paddle.Y And ParticlesVelocity(I).Y > 0 Then
                 ParticlesVelocity(I).Y = -ParticlesVelocity(I).Y
                 ParticlesVelocity(I).X = 10 * (ParticlesPosition(I).X - Paddle.X)
-                Score = Score + 1
             End If
             Line (ParticlesPosition(I).X - BRICK_SIZE_X / 20, ParticlesPosition(I).Y - BRICK_SIZE_Y / 20)-(ParticlesPosition(I).X + BRICK_SIZE_X / 20, ParticlesPosition(I).Y + BRICK_SIZE_Y / 20), ParticlesColour(I), BF
         End If
     Next I
+End Sub
+
+Sub Power (X As Integer, Y As Integer, P As _Unsigned _Byte)
+    Static As _Unsigned _Byte O
+    If X Or Y Then
+        NewVec2 PowerUps(O).Position, X, Y
+        PowerUps(O).Power = P
+        O = O + 1
+    End If
+    For I = 0 To 255
+        Select Case PowerUps(I).Power
+            Case 0: _Continue
+            Case 1: ApplyPowerUp PowerUps(I): PowerUps(I).Power = 0
+            Case Else: PowerUps(I).Position.Y = PowerUps(I).Position.Y + 10
+                If InRange(Paddle.X - PADDLE_SIZE / 2, PowerUps(I).Position.X, Paddle.X + PADDLE_SIZE / 2) And PowerUps(I).Position.Y + BALL_RADIUS > Paddle.Y Then
+                    ApplyPowerUp PowerUps(I)
+                    PowerUps(I).Power = 0
+                End If
+        End Select
+    Next I
+End Sub
+Sub ApplyPowerUp (P As PowerUp)
+    Select Case P.Power
+        Case 1: CurrentPowerUps(P.Power) = CurrentPowerUps(P.Power) + 1 'Increment Balls
+            CreateBall
+            Balls(UBound(Balls)).Position = P.Position
+            NewVec2 Balls(UBound(Balls)).Velocity, Rnd - 0.5, Rnd - 0.5
+    End Select
 End Sub
 
 Sub NewLevel
@@ -232,12 +299,12 @@ Sub NewLevel
     For I = 1 To TOTAL_BRICKS
         CreateBrick
     Next I
-    MAX_BALL_SPEED = 500 + Level * 50
-    Level = Level + 1
+    MAX_BALL_SPEED = MAX_BALL_SPEED + IIF(Level < 10, 50, IIF(Level < 20, 25, IIF(Level < 50, 10, 5)))
+    Level = Level + 1: LevelText$ = "Level" + Str$(Level)
+    _Title "Breakout - Level" + Str$(Level): LevelShowTimer = 0
     TOTAL_BRICKS = Min(TOTAL_BRICKS + 8, 64)
-    _Title "Breakout - Level" + Str$(Level)
-    LevelShowTimer = 0
-    BACKUP_BALLS = BACKUP_BALLS + IIF((Level Mod 5) = 0, 1, 0)
+    BACKUP_BALLS = BACKUP_BALLS + IIF(Level >= 5, 1, 0)
+    If (Level Mod 5) = 0 Then Available_Powers$ = Available_Powers$ + Chr$(Len(Available_Powers$) + 1)
 End Sub
 
 Sub CreateBall
@@ -267,8 +334,7 @@ Sub CreateBrick
     NewVec2 Bricks(BrickID).Position, X * 60 + 270, Y * 30 + IIF(Level > 0, -(1 + TOTAL_BRICKS \ 8) * 30, 75)
     Bricks(BrickID).Alive = 1
     Bricks(BrickID).Colour = GetRandomColour
-    If Rnd > 0.5 Then Bricks(BrickID).Money = 1
-    If Rnd > 0.9 Then Bricks(BrickID).Money = 2
+    If Rnd > 0.9 And Len(Available_Powers$) Then Bricks(BrickID).Power = Asc(Available_Powers$, 1 + Int(Rnd * Len(Available_Powers$)))
     X = X + 1
     If X = 0 Then Y = Y + 1
 End Sub
@@ -280,6 +346,7 @@ Sub DrawBricks
         dY = Bricks(I).FinalPosition.Y - Bricks(I).Position.Y
         Bricks(I).Position.X = Bricks(I).Position.X + Sgn(dX)
         Bricks(I).Position.Y = Bricks(I).Position.Y + Sgn(dY)
+        If Bricks(I).Power > 0 Then _PrintString (Bricks(I).Position.X - _FontWidth / 2, Bricks(I).Position.Y - _FontHeight / 2), _Trim$(Str$(Bricks(I).Power))
     Next I
 End Sub
 Sub DrawBalls
@@ -303,6 +370,16 @@ Sub DrawPaddle
         Line (Paddle.X - PADDLE_SIZE / 2 - I, Paddle.Y + I)-(Paddle.X + PADDLE_SIZE / 2 + I, Paddle.Y + I), _RGB32(255)
     Next I
     Line (Paddle.X - PADDLE_SIZE / 2 - 3, Paddle.Y + 4)-(Paddle.X + PADDLE_SIZE / 2 + 3, Paddle.Y + 4), _RGB32(255)
+End Sub
+Sub DrawPowerUps
+    Static C&(0 To 255)
+    If C&(0) = 0 Then
+        For I = 0 To 255: C&(I) = GetRandomColour: Next I
+    End If
+    For I = 0 To 255
+        If PowerUps(I).Power = 0 Then _Continue
+        Circle (PowerUps(I).Position.X, PowerUps(I).Position.Y), 10, C&(I)
+    Next I
 End Sub
 
 Function GetRandomColour&
