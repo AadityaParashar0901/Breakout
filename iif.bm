@@ -1,0 +1,3 @@
+Function IIF (A As _Byte, B As Double, C As Double)
+    IIF = -B * (A <> 0) - C * (A = 0)
+End Function
