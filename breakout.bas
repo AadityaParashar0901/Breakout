@@ -9,9 +9,6 @@
 
 Randomize Timer
 
-Dim Shared TOTAL_BRICKS As _Unsigned Integer
-TOTAL_BRICKS = 8
-
 Const BALL_RADIUS = 10
 Const INITIAL_BALL_SPEED = 500
 Const PADDLE_SIZE = 100
@@ -25,10 +22,18 @@ Const KEYBOARD_SENSITIVITY = 10 ' Ratio
 
 Const BRICK_SIZE_X = 40
 Const BRICK_SIZE_Y = 15
+Const STARTER_BRICKS = 8
 
+'----- Don't Change -----
 Const PADDLE_ERROR = PADDLE_SIZE / 10
-Const MAX_LENGTH_OF_SOUND = 4
 
+Const MAX_LENGTH_OF_SOUND = 4
+Const SOUND_BALL_BOUNCE = 1
+Const SOUND_BRICK_COLLIDE = 2
+Const SOUND_BALL_LOSE = 3
+Const SOUND_NEW_LEVEL = 4
+Const SOUND_LOSE = 5
+'------------------------
 Type Ball
     As Vec2 Position
     As Vec2 Velocity, oldVelocity
@@ -46,11 +51,12 @@ Type PowerUp
 End Type
 
 Screen _NewImage(960, 540, 32)
-Color -1, 0
+Color -1, _RGB32(0, 127)
 _FullScreen _SquarePixels , _Smooth
 _Title "Breakout"
 _MouseHide
 
+Dim Shared TOTAL_BRICKS As _Unsigned Integer: TOTAL_BRICKS = STARTER_BRICKS
 Dim Shared Balls(0) As Ball, TOTAL_BALLS As _Unsigned Integer, BACKUP_BALLS As _Unsigned Integer, MAX_BALL_SPEED As _Unsigned Integer: MAX_BALL_SPEED = INITIAL_BALL_SPEED
 Dim Shared Level As _Unsigned Integer, LevelText$
 Dim Shared As Vec2 Paddle
@@ -129,7 +135,7 @@ Do
             Score = Score + 5 * TOTAL_BALLS * BricksComboCount
             Score = Score - 5 * (COLLISION_FROM_TOP Or COLLISION_FROM_BOTTOM Or COLLISION_FROM_LEFT Or COLLISION_FROM_RIGHT)
             Particles Bricks(I).Position.X, Bricks(I).Position.Y, Bricks(I).Colour
-            PlaySound 2
+            PlaySound SOUND_BRICK_COLLIDE
             Power Bricks(I).Position.X, Bricks(I).Position.Y, Bricks(I).Power
 
             If Bricks(I).Alive Then
@@ -138,12 +144,12 @@ Do
         Next I
         '-----------------------------
         If BRICKS_COUNT = 0 Then
-            PlaySound 3
+            PlaySound SOUND_NEW_LEVEL
             NewLevel
         End If
         If Vec2RoundEqual(Balls(B).Velocity, Balls(B).oldVelocity) = 0 Then
             Balls(B).oldVelocity = Balls(B).Velocity
-            PlaySound 1
+            PlaySound SOUND_BALL_BOUNCE
             T = PADDLE_SIZE * (Rnd - 0.5) / 2
         End If
         If AI Then
@@ -175,7 +181,7 @@ Do
     If BACKUP_BALLS + TOTAL_BALLS = 0 Then
         _AutoDisplay
         _MouseShow
-        PlaySound 4
+        PlaySound SOUND_LOSE
         CenterPrint "You Lose", -1
         CenterPrint "Score" + Str$(Score), 0
         For I = 1 To MAX_LENGTH_OF_SOUND
@@ -211,24 +217,30 @@ Sub PlaySound (C As _Unsigned _Byte)
     End If
     If GAME_SOUND = 0 Then Exit Sub
     Select Case lC
-        Case 1: 'Ball
+        Case SOUND_BALL_BOUNCE
             Select Case O
-                Case 1: Sound 250, 1
+                Case 1: Sound 300, 1
             End Select
-        Case 2: 'Brick
+        Case SOUND_BRICK_COLLIDE
             Select Case O
                 Case 1: Sound 400, 1
             End Select
-        Case 3: 'New Level
+        Case SOUND_BALL_LOSE
             Select Case O
-                Case 1: Sound 600, 1
-                Case 2: Sound 900, 1
+                Case 1: Sound 250, 1
+                Case 2: Sound 200, 1
             End Select
-        Case 4: 'Lose
+        Case SOUND_NEW_LEVEL
             Select Case O
-                Case 1: Sound 600, 1
-                Case 2: Sound 450, 1
+                Case 1: Sound 400, 1
+                Case 2: Sound 500, 1
+            End Select
+        Case SOUND_LOSE
+            Select Case O
+                Case 1: Sound 500, 1
+                Case 2: Sound 400, 1
                 Case 3: Sound 300, 1
+                Case 4: Sound 200, 1
             End Select
     End Select
     O = O + Sgn(MAX_LENGTH_OF_SOUND - O)
@@ -246,7 +258,7 @@ Sub Particles (X As Integer, Y As Integer, C&)
     If X Or Y Then
         For I = 0 To 3
             NewVec2 ParticlesPosition(O), X + (Rnd - 0.5) * BRICK_SIZE_X, Y + (Rnd - 0.5) * BRICK_SIZE_Y
-            NewVec2 ParticlesVelocity(O), Rnd * 100 - 50, -Rnd * 100
+            NewVec2 ParticlesVelocity(O), Rnd * 200 - 100, -Rnd * 100
             ParticlesColour(O) = C&
             O = O + 1
         Next I
@@ -321,6 +333,7 @@ Sub KillBall (B)
     _FreeImage Balls(B).IMAGE
     For I = B To UBound(Balls) - 1: Swap Balls(I), Balls(I + 1): Next I
     ReDim _Preserve Balls(Min(1, I - 1) To I - 1) As Ball
+    PlaySound SOUND_BALL_LOSE
 End Sub
 
 Sub CreateBrick
