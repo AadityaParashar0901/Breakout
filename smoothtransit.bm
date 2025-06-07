@@ -1,0 +1,5 @@
+Function SmoothTransit& (InitialPosition As Integer, FinalPosition As Integer, MaxTransit As Integer) Static
+    Dim As Integer d
+    d = FinalPosition - InitialPosition
+    If MaxTransit > Abs(d) Then SmoothTransit& = InitialPosition + d Else SmoothTransit = InitialPosition + MaxTransit * Sgn(d)
+End Function
