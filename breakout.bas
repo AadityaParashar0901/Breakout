@@ -1,5 +1,6 @@
 '                     Google Breakout Clone
 '                      by Aaditya Parashar
+'                         Version 1.0.0
 '
 ' Just Press F5... You have 3 balls to lose
 '                  You will get more balls when you reach level 5
