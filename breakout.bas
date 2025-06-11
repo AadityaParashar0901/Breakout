@@ -18,6 +18,7 @@ Const PADDLE_SIZE = 100
 Const AI = 0
 Const AI_PADDLE_SPEED = 10
 Const GAME_SOUND = 1
+Const GAME_SPEED = 1
 Const FPS = 60
 Const MOUSE_SENSITIVITY = 1 ' Ratio
 Const KEYBOARD_SENSITIVITY = 10 ' Ratio
@@ -36,7 +37,15 @@ Const SOUND_BALL_LOSE = 3
 Const SOUND_NEW_LEVEL = 4
 Const SOUND_LOSE = 5
 '------------------------
-Const MAX_POWER_UPS = 4
+
+'----- Power Ups -----
+Const MAX_POWER_UPS = 5
+Const POWER_UP_EXTRA_BALL = 1
+Const POWER_UP_FLOATING_BALL = 2
+Const POWER_UP_TNT_BRICK = 3
+Const POWER_UP_BULLET_PADDLE = 4
+Const POWER_UP_BIG_PADDLE = 5
+'---------------------
 
 Type Ball
     As Vec2 Position
@@ -54,7 +63,7 @@ Type PowerUp
     As _Unsigned _Byte Power
 End Type
 
-Dim Shared As _Unsigned Integer NewScreenX, NewScreenY, NewScreenHeight
+Dim Shared As Integer NewScreenX, NewScreenY, NewScreenHeight
 NewScreenHeight = 540
 Screen _NewImage(960, NewScreenHeight, 32)
 Color -1, _RGB32(0, 127)
@@ -65,13 +74,13 @@ _MouseHide
 Dim Shared TOTAL_BRICKS As _Unsigned Integer: TOTAL_BRICKS = STARTER_BRICKS
 Dim Shared Balls(0) As Ball
 Dim Shared As _Unsigned Integer TOTAL_BALLS, BACKUP_BALLS, MOVING_BALLS, MAX_BALL_SPEED, SLOW_BALL_SPEED: MAX_BALL_SPEED = INITIAL_BALL_SPEED
-Dim Shared As _Unsigned Integer WIDTH, HALF_WIDTH, HEIGHT, HALF_HEIGHT
 Dim As _Unsigned Integer Temporary_Ball_Speed
 Dim Shared Level As _Unsigned Integer, LevelText$
 Dim Shared Paddle As Vec2, New_Paddle_Size
-Dim Shared As Brick Bricks(0), AI_Target_Brick
+Dim Shared As Brick Bricks(0)
+Dim Shared As _Unsigned Integer AI_Target_Brick
 
-Dim Shared Available_Powers$
+Dim Shared Available_Powers$ ': Available_Powers$ = Chr$(3)
 Dim Shared PowerUps(0 To 255) As PowerUp, CurrentPowerUps(0 To 255)
 
 Dim Shared As Vec2 ParticlesPosition(0 To 255), ParticlesVelocity(0 To 255)
@@ -85,15 +94,17 @@ CreateBall
 Dim Shared As _Unsigned _Byte LevelShowTimer
 NewLevel
 
-Dim Shared As _Unsigned Long Score, BricksComboCount
+Dim Shared As _Unsigned Long Score, BricksComboCount, BonusPoints
+_ScreenMove (_DesktopWidth - _Width) / 2, (_DesktopHeight - _Height) / 2
 
 Do
-    _Limit FPS
+    _Limit GAME_SPEED * FPS
     Cls , _RGB32(15)
     If _WindowHasFocus = 0 Then _Continue
     If _Height <> NewScreenHeight Then
         NewScreenX = _ScreenX
         NewScreenY = _ScreenY - (Level Mod 2)
+        Paddle.Y = Paddle.Y + Sgn(NewScreenHeight - _Height)
         Screen _NewImage(_Width, _Height + Sgn(NewScreenHeight - _Height), 32)
         _ScreenMove NewScreenX, NewScreenY
     End If
@@ -102,12 +113,8 @@ Do
         _MouseMove _Width / 2, _Height / 2
     Wend
     Paddle.X = Clamp(New_Paddle_Size / 2, Paddle.X + (_KeyDown(19200) - _KeyDown(19712)) * KEYBOARD_SENSITIVITY, _Width - New_Paddle_Size / 2)
-    If CurrentPowerUps(3) > 0 And _MouseButton(2) And Timer(0.1) - BulletShootTimer > 1 - Level / 20 Then BulletShootTimer = Timer(0.1): Bullet Paddle.X - New_Paddle_Size / 2 + 10, Paddle.Y: Bullet Paddle.X + New_Paddle_Size / 2 - 10, Paddle.Y
+    If CurrentPowerUps(POWER_UP_BULLET_PADDLE) > 0 And _MouseButton(2) And Timer(0.1) - BulletShootTimer > 1 - Level / 50 Then BulletShootTimer = Timer(0.1): Bullet Paddle.X - New_Paddle_Size / 2 + 10, Paddle.Y: Bullet Paddle.X + New_Paddle_Size / 2 - 10, Paddle.Y: CurrentPowerUps(POWER_UP_BULLET_PADDLE) = CurrentPowerUps(POWER_UP_BULLET_PADDLE) - 1
     MOVING_BALLS = 0
-    WIDTH = _Width
-    HALF_WIDTH = WIDTH / 2
-    HEIGHT = _Height
-    HALF_HEIGHT = HEIGHT / 2
 
     For B = LBound(Balls) To UBound(Balls)
         If Vec2Length(Balls(B).Velocity) = 0 Then
@@ -116,7 +123,7 @@ Do
         End If
         If Abs(Balls(B).Velocity.X) > Abs(Balls(B).Velocity.Y) Then Swap Balls(B).Velocity.X, Balls(B).Velocity.Y
         MOVING_BALLS = MOVING_BALLS + Sgn(Vec2Length(Balls(B).Velocity))
-        Temporary_Ball_Speed = IIF(CurrentPowerUps(2) > 0 And Balls(B).Velocity.Y > 0 And Balls(B).Position.Y > HALF_HEIGHT, SLOW_BALL_SPEED, MAX_BALL_SPEED)
+        Temporary_Ball_Speed = IIF(CurrentPowerUps(POWER_UP_FLOATING_BALL) > 0 And Balls(B).Velocity.Y > 0, SLOW_BALL_SPEED, MAX_BALL_SPEED)
         If Vec2Length(Balls(B).Velocity) Then
             Vec2Multiply Balls(B).Velocity, Temporary_Ball_Speed / Vec2Length(Balls(B).Velocity)
             Vec2MultiplyAdd Balls(B).Position, Balls(B).Velocity, 1 / FPS
@@ -132,13 +139,14 @@ Do
             Balls(B).Velocity.Y = -Balls(B).Velocity.Y
             Balls(B).Velocity.X = 10 * (Balls(B).Position.X - Paddle.X)
             BricksComboCount = 0
-            If CurrentPowerUps(3) Then Bullet Paddle.X - New_Paddle_Size / 2 + 10, Paddle.Y: Bullet Paddle.X + New_Paddle_Size / 2 - 10, Paddle.Y
+            If CurrentPowerUps(POWER_UP_BULLET_PADDLE) Then Bullet Paddle.X - New_Paddle_Size / 2 + 10, Paddle.Y: Bullet Paddle.X + New_Paddle_Size / 2 - 10, Paddle.Y
         End If
         '------------------------------
         'Simulate Ball Brick Collision
         BRICKS_COUNT = 0 'To count remaining Bricks
         For I = LBound(Bricks) To UBound(Bricks)
             If Bricks(I).Alive = 0 Then _Continue
+            If AI Then AI_Target_Brick = I
             BRICKS_COUNT = BRICKS_COUNT + 1
             If (InRange(Bricks(I).Position.X - BALL_RADIUS - BRICK_SIZE_X / 2, Balls(B).Position.X, Bricks(I).Position.X + BALL_RADIUS + BRICK_SIZE_X / 2) And InRange(Bricks(I).Position.Y - BALL_RADIUS - BRICK_SIZE_Y / 2, Balls(B).Position.Y, Bricks(I).Position.Y + BALL_RADIUS + BRICK_SIZE_Y / 2)) = 0 Then _Continue
             BALL_IN_BRICK_X = InRange(Bricks(I).Position.X - BRICK_SIZE_X / 2, Balls(B).Position.X, Bricks(I).Position.X + BRICK_SIZE_X / 2)
@@ -157,12 +165,10 @@ Do
             End If
             BreakBrick I
             BricksComboCount = BricksComboCount + 1
+            If BricksComboCount > 1 Then BonusPoints = BonusPoints + BricksComboCount - 1
             Balls(B).BrickCount = Balls(B).BrickCount + 1
             Score = Score + 5 * TOTAL_BALLS * BricksComboCount
             Score = Score - 5 * (COLLISION_FROM_TOP Or COLLISION_FROM_BOTTOM Or COLLISION_FROM_LEFT Or COLLISION_FROM_RIGHT)
-            If Bricks(I).Alive Then
-                AI_Target_Brick = Bricks(I)
-            End If
         Next I
         '-----------------------------
         If BRICKS_COUNT = 0 Then
@@ -172,11 +178,12 @@ Do
         If Vec2RoundEqual(Balls(B).Velocity, Balls(B).oldVelocity) = 0 Then
             Balls(B).oldVelocity = Balls(B).Velocity
             PlaySound SOUND_BALL_BOUNCE
-            T = New_Paddle_Size * (Rnd - 0.5) / 2
         End If
-        If AI Then
-            dX = Balls(B).Position.X - Paddle.X + T
-            If Balls(B).Position.Y > _Height * 0.8 Then Paddle.X = Paddle.X + Sgn(dX) * Min(Abs(dX), AI_PADDLE_SPEED)
+        If AI And InRange(LBound(Bricks), AI_Target_Brick, UBound(Bricks)) And MOVING_BALLS Then
+            If Balls(B).Position.Y Then
+                dX = Balls(B).Position.X + Balls(B).Velocity.X / FPS - Min(New_Paddle_Size / 2, (Bricks(AI_Target_Brick).Position.X - Paddle.X) / 10) - Paddle.X
+                Paddle.X = Clamp(New_Paddle_Size / 2, Paddle.X + Sgn(dX) * Min(Abs(dX), AI_PADDLE_SPEED), _Width - New_Paddle_Size / 2)
+            End If
         End If
     Next B
 
@@ -190,9 +197,12 @@ Do
     Power 0, 0, 0
     Bullet 0, 0
     Bubble
+    Explode 0, 0
 
     Print "FPS: "; __FPS
     Print "Score:"; Score
+    Print "Bonus Points:"; BonusPoints
+    If InRange(LBound(Bricks), AI_Target_Brick, UBound(Bricks)) Then Print "AI_Target_Brick:"; Bricks(AI_Target_Brick).Position.X; Bricks(AI_Target_Brick).Position.Y
     If BricksComboCount > 1 Then
         CenterPrint "Combo x" + _Trim$(Str$(BricksComboCount)) + " (" + _Trim$(Str$(5 * TOTAL_BALLS * SumTo(BricksComboCount, 1))) + ")", 1
     End If
@@ -221,9 +231,9 @@ Do
         BACKUP_BALLS = BACKUP_BALLS - 1
     End If
     LFPSCount = LFPSCount + 1
-    If Timer(0.01) - oldTimer! > 1 Then
+    If Timer(0.01) - oldTimer! > 0.5 Then
         oldTimer! = Timer(0.01)
-        __FPS = LFPSCount
+        __FPS = LFPSCount * 2
         LFPSCount = 0
     End If
 Loop Until Inp(&H60) = 1
@@ -318,7 +328,7 @@ Sub Bubble
         Bubbles(I).X = Bubbles(I).X + 0.25
         Bubbles(I).Y = Bubbles(I).Y - 0.20
     Next I
-    If CurrentPowerUps(2) And Timer(0.1) - LastBubbleTimer > 1 Then
+    If CurrentPowerUps(POWER_UP_FLOATING_BALL) And Timer(0.1) - LastBubbleTimer > 0.25 Then
         LastBubbleTimer = Timer(0.01)
         Bubbles(NewBubble).X = Rnd * _Width
         Bubbles(NewBubble).Y = (0.6 + Rnd * 0.4) * _Height
@@ -351,6 +361,23 @@ Sub Bullet (X As Integer, Y As Integer)
     Next I
 End Sub
 
+Sub Explode (X As Integer, Y As Integer)
+    Static ExplosionPosition(0 To 255) As Vec2, ExplosionStates(0 To 255) As _Unsigned _Byte, ExplosionIterator As _Unsigned _Byte
+    If X Or Y Then
+        ExplosionPosition(ExplosionIterator).X = X
+        ExplosionPosition(ExplosionIterator).Y = Y
+        ExplosionStates(ExplosionIterator) = 1
+        ExplosionIterator = ExplosionIterator + 1
+    End If
+    For I = 0 To 255
+        Select Case ExplosionStates(I)
+            Case 1 To 4: Circle (ExplosionPosition(I).X, ExplosionPosition(I).Y), ExplosionStates(I) + 5, -1
+            Case Else: _Continue
+        End Select
+        ExplosionStates(I) = ExplosionStates(I) + 1
+    Next I
+End Sub
+
 Sub Power (X As Integer, Y As Integer, P As _Unsigned _Byte)
     Static As _Unsigned _Byte O
     If X Or Y Then
@@ -361,7 +388,8 @@ Sub Power (X As Integer, Y As Integer, P As _Unsigned _Byte)
     For I = 0 To 255
         Select Case PowerUps(I).Power
             Case 0
-            Case 1: ApplyPowerUp PowerUps(I): PowerUps(I).Power = 0
+            Case POWER_UP_EXTRA_BALL: ApplyPowerUp PowerUps(I): PowerUps(I).Power = 0
+            Case POWER_UP_TNT_BRICK:
             Case Else: PowerUps(I).Position.Y = PowerUps(I).Position.Y + 4
                 If InRange(Paddle.X - New_Paddle_Size / 2, PowerUps(I).Position.X, Paddle.X + New_Paddle_Size / 2) And PowerUps(I).Position.Y + BALL_RADIUS > Paddle.Y Then
                     ApplyPowerUp PowerUps(I)
@@ -369,17 +397,17 @@ Sub Power (X As Integer, Y As Integer, P As _Unsigned _Byte)
                 End If
         End Select
         Select Case I
-            Case 2 To 4: CurrentPowerUps(I) = CurrentPowerUps(I) - Sgn(CurrentPowerUps(I)) * Sgn(MOVING_BALLS)
+            Case POWER_UP_FLOATING_BALL, POWER_UP_BULLET_PADDLE, POWER_UP_BIG_PADDLE: CurrentPowerUps(I) = CurrentPowerUps(I) - Sgn(CurrentPowerUps(I)) * Sgn(MOVING_BALLS)
         End Select
     Next I
 End Sub
 Sub ApplyPowerUp (P As PowerUp)
     Select Case P.Power
-        Case 1: CurrentPowerUps(1) = CurrentPowerUps(1) + 1 'Increment Balls
+        Case POWER_UP_EXTRA_BALL: CurrentPowerUps(1) = CurrentPowerUps(1) + 1 'Increment Balls
             CreateBall
             Balls(UBound(Balls)).Position = P.Position
             NewVec2 Balls(UBound(Balls)).Velocity, Rnd - 0.5, Rnd - 0.5
-        Case 2 To 4: CurrentPowerUps(P.Power) = 10 * FPS 'Set 10 Seconds
+        Case POWER_UP_FLOATING_BALL, POWER_UP_BULLET_PADDLE, POWER_UP_BIG_PADDLE: CurrentPowerUps(P.Power) = 10 * FPS + Int(Level / 5) + Int(BonusPoints / 10) 'Set 10 Seconds + Bonus
     End Select
 End Sub
 
@@ -392,10 +420,11 @@ Sub NewLevel
     SLOW_BALL_SPEED = 0.6 * MAX_BALL_SPEED
     Level = Level + 1: LevelText$ = "Level" + Str$(Level)
     _Title "Breakout - Level" + Str$(Level): LevelShowTimer = 0
-    TOTAL_BRICKS = Min(TOTAL_BRICKS + 8, 64)
+    TOTAL_BRICKS = Clamp(8, TOTAL_BRICKS + IIF((Level Mod 20) <= 10, 8, -8), 64)
     BACKUP_BALLS = BACKUP_BALLS + IIF(Level >= 5, 1, 0)
     If (Level Mod 2) = 0 And Len(Available_Powers$) < MAX_POWER_UPS Then Available_Powers$ = Available_Powers$ + Chr$(Len(Available_Powers$) + 1)
-    If (Level Mod 5) = 0 Then NewScreenHeight = _Height + 60
+    If (Level Mod 5) = 0 Then NewScreenHeight = _Height + IIF((Level Mod 40) <= 20, 60, -60)
+    BonusPoints = BonusPoints + 1
 End Sub
 
 Sub CreateBall
@@ -430,11 +459,20 @@ Sub CreateBrick
     X = X + 1
     If X = 0 Then Y = Y + 1
 End Sub
-Sub BreakBrick (I As _Unsigned Integer)
+Sub BreakBrick (I As Integer)
+    If InRange(LBound(Bricks), I, UBound(Bricks)) = 0 Then Exit Sub
+    If Bricks(I).Alive = 0 Then Exit Sub
     Bricks(I).Alive = 0
     Particles Bricks(I).Position.X, Bricks(I).Position.Y, Bricks(I).Colour
     PlaySound SOUND_BRICK_COLLIDE
-    Power Bricks(I).Position.X, Bricks(I).Position.Y, Bricks(I).Power
+    Select Case Bricks(I).Power
+        Case POWER_UP_TNT_BRICK
+            Explode Bricks(I).Position.X, Bricks(I).Position.Y
+            If ((I - 1) And 7) > 0 Then BreakBrick I - 9: BreakBrick I - 1: BreakBrick I + 7
+            BreakBrick I - 8: BreakBrick I + 8
+            If ((I - 1) And 7) < 7 Then BreakBrick I - 7: BreakBrick I + 1: BreakBrick I + 9
+        Case Else: Power Bricks(I).Position.X, Bricks(I).Position.Y, Bricks(I).Power
+    End Select
 End Sub
 Sub DrawBricks
     For I = LBound(Bricks) To UBound(Bricks)
@@ -451,9 +489,9 @@ Sub DrawBalls
     For I = LBound(Balls) To UBound(Balls)
         If I <= 0 Then _Continue
         _PutImage (Balls(I).Position.X - BALL_RADIUS, Balls(I).Position.Y - BALL_RADIUS)-(Balls(I).Position.X + BALL_RADIUS, Balls(I).Position.Y + BALL_RADIUS), Balls(I).IMAGE
-        If CurrentPowerUps(2) And Balls(I).Position.Y > _Height / 2 Then
-            Circle (Balls(I).Position.X, Balls(I).Position.Y), BALL_RADIUS + 2, -1
-            Circle (Balls(I).Position.X, Balls(I).Position.Y), BALL_RADIUS + 3, -1
+        If CurrentPowerUps(2) Then
+            Circle (Balls(I).Position.X, Balls(I).Position.Y), BALL_RADIUS + 2, _RGB32(0, 127, 255)
+            Circle (Balls(I).Position.X, Balls(I).Position.Y), BALL_RADIUS + 3, _RGB32(0, 127, 255)
         End If
     Next I
 End Sub
