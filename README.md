@@ -9,4 +9,8 @@ A simple brick breaker game, with advanced features as power ups.
 * Shooting Paddle
 * Big Paddle
 
-New Powerups are unlocked at levels 5, 10, 15, 20.
+New Powerups are unlocked at levels 2, 4, 6, 8, 10.
+
+## Bonus Points:
+These points are gained by combo, or reaching a new level.  
+These points add to the power up time.
