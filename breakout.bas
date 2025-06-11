@@ -25,7 +25,6 @@ Const KEYBOARD_SENSITIVITY = 10 ' Ratio
 
 Const BRICK_SIZE_X = 40
 Const BRICK_SIZE_Y = 15
-Const STARTER_BRICKS = 8
 
 '----- Don't Change -----
 Const PADDLE_ERROR = PADDLE_SIZE / 10
@@ -67,11 +66,11 @@ Dim Shared As Integer NewScreenX, NewScreenY, NewScreenHeight
 NewScreenHeight = 540
 Screen _NewImage(960, NewScreenHeight, 32)
 Color -1, _RGB32(0, 127)
-'_FullScreen _SquarePixels , _Smooth
+_FullScreen _SquarePixels , _Smooth
 _Title "Breakout"
 _MouseHide
 
-Dim Shared TOTAL_BRICKS As _Unsigned Integer: TOTAL_BRICKS = STARTER_BRICKS
+Dim Shared TOTAL_BRICKS As _Unsigned Integer
 Dim Shared Balls(0) As Ball
 Dim Shared As _Unsigned Integer TOTAL_BALLS, BACKUP_BALLS, MOVING_BALLS, MAX_BALL_SPEED, SLOW_BALL_SPEED: MAX_BALL_SPEED = INITIAL_BALL_SPEED
 Dim As _Unsigned Integer Temporary_Ball_Speed
@@ -80,7 +79,7 @@ Dim Shared Paddle As Vec2, New_Paddle_Size
 Dim Shared As Brick Bricks(0)
 Dim Shared As _Unsigned Integer AI_Target_Brick
 
-Dim Shared Available_Powers$ ': Available_Powers$ = Chr$(3)
+Dim Shared Available_Powers$
 Dim Shared PowerUps(0 To 255) As PowerUp, CurrentPowerUps(0 To 255)
 
 Dim Shared As Vec2 ParticlesPosition(0 To 255), ParticlesVelocity(0 To 255)
@@ -91,10 +90,11 @@ Paddle.Y = 530
 
 BACKUP_BALLS = 3
 CreateBall
-Dim Shared As _Unsigned _Byte LevelShowTimer
+Dim Shared As _Unsigned _Byte LevelShowTimer, NewPowerUpTimer: NewPowerUpTimer = 255
 NewLevel
 
-Dim Shared As _Unsigned Long Score, BricksComboCount, BonusPoints
+Dim Shared As _Unsigned Long Score, HighScore, BricksComboCount, BonusPoints
+ReadHighScore
 _ScreenMove (_DesktopWidth - _Width) / 2, (_DesktopHeight - _Height) / 2
 
 Do
@@ -106,7 +106,7 @@ Do
         NewScreenY = _ScreenY - (Level Mod 2)
         Paddle.Y = Paddle.Y + Sgn(NewScreenHeight - _Height)
         Screen _NewImage(_Width, _Height + Sgn(NewScreenHeight - _Height), 32)
-        _ScreenMove NewScreenX, NewScreenY
+        If _FullScreen = 0 Then _ScreenMove NewScreenX, NewScreenY
     End If
     While _MouseInput
         Paddle.X = Clamp(New_Paddle_Size / 2, Paddle.X + _MouseMovementX * MOUSE_SENSITIVITY, _Width - New_Paddle_Size / 2)
@@ -199,9 +199,18 @@ Do
     Bubble
     Explode 0, 0
 
-    Print "FPS: "; __FPS
+    Print "FPS:"; __FPS
     Print "Score:"; Score
+    Print "High Score:"; HighScore
     Print "Bonus Points:"; BonusPoints
+    For I = 1 To MAX_POWER_UPS
+        If CurrentPowerUps(I) = 0 Then _Continue
+        Select Case I
+            Case 1: _Continue
+            Case 2 To 5: Print GetPowerUpName$(I); ":";
+        End Select
+        Print CurrentPowerUps(I); "seconds"
+    Next I
     If InRange(LBound(Bricks), AI_Target_Brick, UBound(Bricks)) Then Print "AI_Target_Brick:"; Bricks(AI_Target_Brick).Position.X; Bricks(AI_Target_Brick).Position.Y
     If BricksComboCount > 1 Then
         CenterPrint "Combo x" + _Trim$(Str$(BricksComboCount)) + " (" + _Trim$(Str$(5 * TOTAL_BALLS * SumTo(BricksComboCount, 1))) + ")", 1
@@ -209,6 +218,10 @@ Do
     If LevelShowTimer < 180 Then
         CenterPrint "Level" + Str$(Level), 0
         LevelShowTimer = LevelShowTimer + Sgn(255 - LevelShowTimer)
+    End If
+    If NewPowerUpTimer < 180 Then
+        CenterPrint "New Power Up: " + GetPowerUpName$(Asc(Available_Powers$, Len(Available_Powers$))), -1
+        NewPowerUpTimer = NewPowerUpTimer + Sgn(255 - NewPowerUpTimer)
     End If
     _PrintString (_Width / 2 - _FontWidth * Len(LevelText$) / 2, 0), LevelText$
     _Display
@@ -218,7 +231,9 @@ Do
         _MouseShow
         PlaySound SOUND_LOSE
         CenterPrint "You Lose", -1
-        CenterPrint "Score" + Str$(Score), 0
+        HighScore = Max(Score, HighScore)
+        CenterPrint "Score" + Str$(Score) + ", High Score" + Str$(HighScore), 0
+        SaveHighScore
         For I = 1 To MAX_LENGTH_OF_SOUND
             PlaySound 0
         Next I
@@ -238,6 +253,31 @@ Do
     End If
 Loop Until Inp(&H60) = 1
 System
+
+Sub ReadHighScore
+    If _FileExists("high_score.dat") = 0 Then Exit Sub
+    Open "high_score.dat" For Binary As #1
+    If LOF(1) >= 4 Then
+        Get #1, , HighScore
+    End If
+    Close #1
+End Sub
+
+Sub SaveHighScore
+    Open "high_score.dat" For Binary As #1
+    Put #1, , HighScore
+    Close #1
+End Sub
+
+Function GetPowerUpName$ (I)
+    Select Case I
+        Case 1: GetPowerUpName$ = "Extra Ball"
+        Case 2: GetPowerUpName$ = "Floating Ball"
+        Case 3: GetPowerUpName$ = "TNT Brick"
+        Case 4: GetPowerUpName$ = "Bullet Paddle"
+        Case 5: GetPowerUpName$ = "Big Paddle"
+    End Select
+End Function
 
 Function SumTo~& (X As _Unsigned Integer, S As _Unsigned Integer)
     For __I~& = 1 To X Step S
@@ -407,24 +447,24 @@ Sub ApplyPowerUp (P As PowerUp)
             CreateBall
             Balls(UBound(Balls)).Position = P.Position
             NewVec2 Balls(UBound(Balls)).Velocity, Rnd - 0.5, Rnd - 0.5
-        Case POWER_UP_FLOATING_BALL, POWER_UP_BULLET_PADDLE, POWER_UP_BIG_PADDLE: CurrentPowerUps(P.Power) = 10 * FPS + Int(Level / 5) + Int(BonusPoints / 10) 'Set 10 Seconds + Bonus
+        Case POWER_UP_FLOATING_BALL, POWER_UP_BULLET_PADDLE, POWER_UP_BIG_PADDLE: CurrentPowerUps(P.Power) = (10 + Int(Level / 5) + Int(BonusPoints / 10)) * FPS 'Set 10 Seconds + Bonus
     End Select
 End Sub
 
 Sub NewLevel
     ReDim Bricks(0) As Brick
-    For I = 1 To TOTAL_BRICKS
-        CreateBrick
-    Next I
     MAX_BALL_SPEED = MAX_BALL_SPEED + IIF(Level < 10, 50, IIF(Level < 20, 25, IIF(Level < 50, 10, 5)))
     SLOW_BALL_SPEED = 0.6 * MAX_BALL_SPEED
     Level = Level + 1: LevelText$ = "Level" + Str$(Level)
     _Title "Breakout - Level" + Str$(Level): LevelShowTimer = 0
     TOTAL_BRICKS = Clamp(8, TOTAL_BRICKS + IIF((Level Mod 20) <= 10, 8, -8), 64)
     BACKUP_BALLS = BACKUP_BALLS + IIF(Level >= 5, 1, 0)
-    If (Level Mod 2) = 0 And Len(Available_Powers$) < MAX_POWER_UPS Then Available_Powers$ = Available_Powers$ + Chr$(Len(Available_Powers$) + 1)
-    If (Level Mod 5) = 0 Then NewScreenHeight = _Height + IIF((Level Mod 40) <= 20, 60, -60)
+    If (Level Mod 2) = 0 And Len(Available_Powers$) < MAX_POWER_UPS Then Available_Powers$ = Available_Powers$ + Chr$(Len(Available_Powers$) + 1): NewPowerUpTimer = 0
+    If (Level Mod 5) = 0 Then NewScreenHeight = Max(540, _Height + IIF((Level Mod 40) < 20, 60, -60))
     BonusPoints = BonusPoints + 1
+    For I = 1 To TOTAL_BRICKS
+        CreateBrick
+    Next I
 End Sub
 
 Sub CreateBall
@@ -452,7 +492,7 @@ Sub CreateBrick
     BrickID = UBound(Bricks) + 1
     ReDim _Preserve Bricks(1 To BrickID) As Brick
     NewVec2 Bricks(BrickID).FinalPosition, X * 60 + 270, Y * 30 + 75
-    NewVec2 Bricks(BrickID).Position, X * 60 + 270, Y * 30 + IIF(Level > 0, -(1 + TOTAL_BRICKS \ 8) * 30, 75)
+    NewVec2 Bricks(BrickID).Position, X * 60 + 270, Y * 30 + IIF(Level > 1, -(1 + TOTAL_BRICKS \ 8) * 30, 75)
     Bricks(BrickID).Alive = 1
     Bricks(BrickID).Colour = GetRandomColour
     If Rnd > 0.9 And Len(Available_Powers$) Then Bricks(BrickID).Power = Asc(Available_Powers$, 1 + Int(Rnd * Len(Available_Powers$)))
@@ -507,7 +547,7 @@ Sub DrawBackupBalls
 End Sub
 Sub DrawPaddle
     Static LaserPosition
-    New_Paddle_Size = SmoothTransit(New_Paddle_Size, PADDLE_SIZE + 100 * Sgn(CurrentPowerUps(4)), 2)
+    New_Paddle_Size = SmoothTransit(New_Paddle_Size, PADDLE_SIZE + 100 * Sgn(CurrentPowerUps(POWER_UP_BIG_PADDLE)), 2)
     For I = 0 To 3
         Line (Paddle.X - New_Paddle_Size / 2 - I, Paddle.Y + I)-(Paddle.X + New_Paddle_Size / 2 + I, Paddle.Y + I), _RGB32(255)
     Next I
