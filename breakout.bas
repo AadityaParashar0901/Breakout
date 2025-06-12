@@ -1,6 +1,6 @@
 '                     Google Breakout Clone
 '                      by Aaditya Parashar
-'                         Version 1.2.5
+'                         Version 1.2.7
 '
 ' Just Press F5... You have 3 balls to lose
 '                  You will get more balls when you reach level 5
@@ -74,7 +74,7 @@ _MouseHide
 
 Dim Shared TOTAL_BRICKS As _Unsigned Integer
 Dim Shared Balls(0) As Ball
-Dim Shared As _Unsigned Integer TOTAL_BALLS, BACKUP_BALLS, MOVING_BALLS, MAX_BALL_SPEED, SLOW_BALL_SPEED: MAX_BALL_SPEED = INITIAL_BALL_SPEED
+Dim Shared As _Unsigned Integer TOTAL_BALLS, BACKUP_BALLS, MOVING_BALLS, MAX_BALL_SPEED, SLOW_BALL_SPEED, OLD_BALL_SPEED: MAX_BALL_SPEED = INITIAL_BALL_SPEED
 Dim As _Unsigned Integer Temporary_Ball_Speed
 Dim Shared Level As _Unsigned Integer, LevelText$
 Dim Shared Paddle As Vec2, New_Paddle_Size
@@ -84,9 +84,6 @@ Dim Shared As _Unsigned Integer AI_Target_Brick
 Dim Shared Available_Powers$
 If POWER_TEST Then Available_Powers$ = MKL$(&H04030201) + Chr$(5)
 Dim Shared PowerUps(0 To 255) As PowerUp, CurrentPowerUps(0 To 255)
-
-Dim Shared As Vec2 ParticlesPosition(0 To 255), ParticlesVelocity(0 To 255)
-Dim Shared As Long ParticlesColour(0 To 255)
 
 Paddle.X = _Width / 2
 Paddle.Y = 530
@@ -211,6 +208,11 @@ Do
     Print "Score:"; Score
     Print "High Score:"; HighScore
     Print "Bonus Points:"; BonusPoints
+    If LevelShowTimer < 180 Then
+        Print "Ball Speed:"; OLD_BALL_SPEED; "->"; MAX_BALL_SPEED
+    Else
+        Print "Ball Speed:"; MAX_BALL_SPEED
+    End If
     For I = 1 To MAX_POWER_UPS
         If CurrentPowerUps(I) = 0 Then _Continue
         Select Case I
@@ -343,18 +345,23 @@ Function Vec2RoundEqual (__V1 As Vec2, __V2 As Vec2)
 End Function
 
 Sub Particles (X As Integer, Y As Integer, C&)
+    Static As Vec2 ParticlesPosition(0 To 255), ParticlesVelocity(0 To 255)
+    Static As Long ParticlesColour(0 To 255)
+    Static As _Unsigned _Byte ParticlesAlive(0 To 31)
     Static As _Unsigned _Byte O
+    Dim As _Unsigned Long I, J
     If X Or Y Then
         For I = 0 To 3
             NewVec2 ParticlesPosition(O), X + (Rnd - 0.5) * BRICK_SIZE_X, Y + (Rnd - 0.5) * BRICK_SIZE_Y
-            NewVec2 ParticlesVelocity(O), Rnd * 200 - 100, -Rnd * 100
+            NewVec2 ParticlesVelocity(O), (Rnd - 0.5) * 500, -Rnd * 250
             ParticlesColour(O) = C&
+            ParticlesAlive(_SHR(O, 3)) = _SetBit(ParticlesAlive(_SHR(O, 3)), O And 7)
             O = O + 1
         Next I
         Exit Sub
     End If
     For I = 0 To 255
-        If Vec2Length(ParticlesVelocity(I)) Then
+        If _ReadBit(ParticlesAlive(_SHR(I, 3)), I And 7) Then
             Vec2MultiplyAdd ParticlesPosition(I), ParticlesVelocity(I), 1 / FPS
             ParticlesVelocity(I).Y = ParticlesVelocity(I).Y + 10
             If ParticlesPosition(I).Y > _Height Then NewVec2 ParticlesVelocity(I), 0, 0
@@ -362,6 +369,15 @@ Sub Particles (X As Integer, Y As Integer, C&)
                 ParticlesVelocity(I).Y = -ParticlesVelocity(I).Y
                 ParticlesVelocity(I).X = 10 * (ParticlesPosition(I).X - Paddle.X)
             End If
+            For J = LBound(Bricks) To UBound(Bricks)
+                If Bricks(J).Alive = 0 Then _Continue
+                If InRange(-BRICK_SIZE_X / 2, ParticlesPosition(I).X - Bricks(J).Position.X, BRICK_SIZE_X / 2) And InRange(-BRICK_SIZE_Y * 0.75, ParticlesPosition(I).Y - Bricks(J).Position.Y, -BRICK_SIZE_Y / 2) Then
+                    ParticlesVelocity(I).Y = 0
+                    ParticlesPosition(I).Y = Bricks(J).Position.Y - BRICK_SIZE_Y * 0.55
+                    ParticlesVelocity(I).X = ParticlesVelocity(I).X * 0.9
+                    ParticlesVelocity(I).X = -(ParticlesVelocity(I).X > 0.05) * ParticlesVelocity(I).X
+                End If
+            Next J
             Line (ParticlesPosition(I).X - BRICK_SIZE_X / 20, ParticlesPosition(I).Y - BRICK_SIZE_Y / 20)-(ParticlesPosition(I).X + BRICK_SIZE_X / 20, ParticlesPosition(I).Y + BRICK_SIZE_Y / 20), ParticlesColour(I), BF
         End If
     Next I
@@ -491,7 +507,8 @@ End Sub
 
 Sub NewLevel
     ReDim Bricks(0) As Brick
-    MAX_BALL_SPEED = MAX_BALL_SPEED + IIF(Level < 10, 50, IIF(Level < 20, 25, IIF(Level < 50, 10, 5)))
+    OLD_BALL_SPEED = MAX_BALL_SPEED
+    If Level > 0 Then MAX_BALL_SPEED = MAX_BALL_SPEED + IIF(Level < 10, 50, IIF(Level < 20, 25, IIF(Level < 50, 10, 5)))
     SLOW_BALL_SPEED = 0.6 * MAX_BALL_SPEED
     Level = Level + 1: LevelText$ = "Level" + Str$(Level)
     _Title "Breakout - Level" + Str$(Level): LevelShowTimer = 0
