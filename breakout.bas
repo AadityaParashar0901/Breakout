@@ -1,6 +1,6 @@
 '                     Google Breakout Clone
 '                      by Aaditya Parashar
-'                         Version 1.2.7
+'                         Version 1.3.0
 '
 ' Just Press F5... You have 3 balls to lose
 '                  You will get more balls when you reach level 5
@@ -17,7 +17,7 @@ Const PADDLE_SIZE = 100
 
 Const AI = 0
 Const AI_PADDLE_SPEED = 25
-Const GAME_SOUND = 1 'Set this zero if game lags
+Const GAME_SOUND = 1 ' Set this zero if game lags
 Const GAME_SPEED = 1
 Const FPS = 60
 Const MOUSE_SENSITIVITY = 1 ' Ratio
@@ -29,12 +29,13 @@ Const BRICK_SIZE_Y = 15
 '----- Don't Change -----
 Const PADDLE_ERROR = PADDLE_SIZE / 10
 
-Const MAX_LENGTH_OF_SOUND = 4
+Const MAX_LENGTH_OF_SOUND = 6
 Const SOUND_BALL_BOUNCE = 1
 Const SOUND_BRICK_COLLIDE = 2
-Const SOUND_BALL_LOSE = 3
-Const SOUND_NEW_LEVEL = 4
-Const SOUND_LOSE = 5
+Const SOUND_TNT_BRICK_COLLIDE = 3
+Const SOUND_BALL_LOSE = 4
+Const SOUND_NEW_LEVEL = 5
+Const SOUND_LOSE = 6
 '------------------------
 
 '----- Power Ups -----
@@ -70,7 +71,7 @@ Screen _NewImage(960, NewScreenHeight, 32)
 Color -1, _RGB32(0, 127)
 _FullScreen _SquarePixels , _Smooth
 _Title "Breakout"
-_MouseHide
+If AI = 0 Then _MouseHide
 
 Dim Shared TOTAL_BRICKS As _Unsigned Integer
 Dim Shared Balls(0) As Ball
@@ -100,16 +101,16 @@ _ScreenMove (_DesktopWidth - _Width) / 2, (_DesktopHeight - _Height) / 2
 Do
     _Limit GAME_SPEED * FPS
     Cls , _RGB32(15)
-    If _WindowHasFocus = 0 Then _Continue
+    If _WindowHasFocus = 0 And AI = 0 Then _Continue
     If _Height <> NewScreenHeight Then
         NewScreenX = _ScreenX
-        NewScreenY = _ScreenY - (Level Mod 2)
+        NewScreenY = _ScreenY - (Level Mod 2) * Sgn(NewScreenHeight - _Height)
         Paddle.Y = Paddle.Y + Sgn(NewScreenHeight - _Height)
         Screen _NewImage(_Width, _Height + Sgn(NewScreenHeight - _Height), 32)
         Color -1, _RGB32(0, 31)
         If _FullScreen = 0 Then _ScreenMove NewScreenX, NewScreenY
     End If
-    While _MouseInput
+    While _MouseInput And AI = 0
         Paddle.X = Clamp(New_Paddle_Size / 2, Paddle.X + _MouseMovementX * MOUSE_SENSITIVITY, _Width - New_Paddle_Size / 2)
         _MouseMove _Width / 2, _Height / 2
     Wend
@@ -316,6 +317,11 @@ Sub PlaySound (C As _Unsigned _Byte)
             Select Case O
                 Case 1: Sound 400, 1
             End Select
+        Case SOUND_TNT_BRICK_COLLIDE
+            Select Case O
+                Case 1: Sound 200, 1
+                Case 2: Sound 250, 1
+            End Select
         Case SOUND_BALL_LOSE
             Select Case O
                 Case 1: Sound 250, 1
@@ -363,12 +369,18 @@ Sub Particles (X As Integer, Y As Integer, C&)
     For I = 0 To 255
         If _ReadBit(ParticlesAlive(_SHR(I, 3)), I And 7) Then
             Vec2MultiplyAdd ParticlesPosition(I), ParticlesVelocity(I), 1 / FPS
-            ParticlesVelocity(I).Y = ParticlesVelocity(I).Y + 10
-            If ParticlesPosition(I).Y > _Height Then NewVec2 ParticlesVelocity(I), 0, 0
-            If InRange(Paddle.X - New_Paddle_Size / 2, ParticlesPosition(I).X, Paddle.X + New_Paddle_Size / 2) And ParticlesPosition(I).Y + BALL_RADIUS > Paddle.Y And ParticlesVelocity(I).Y > 0 Then
+            If InRange(Paddle.X - New_Paddle_Size / 2, ParticlesPosition(I).X, Paddle.X + New_Paddle_Size / 2) And ParticlesPosition(I).Y > Paddle.Y And ParticlesVelocity(I).Y > 0.1 Then
                 ParticlesVelocity(I).Y = -ParticlesVelocity(I).Y
                 ParticlesVelocity(I).X = 10 * (ParticlesPosition(I).X - Paddle.X)
             End If
+            If ParticlesPosition(I).Y > _Height - BRICK_SIZE_Y * 0.1 Then
+                NewVec2 ParticlesVelocity(I), 0, 0
+                ParticlesPosition(I).Y = _Height - BRICK_SIZE_Y * 0.1
+                ParticlesAlive(_SHR(O, 3)) = _ResetBit(ParticlesAlive(_SHR(O, 3)), O And 7)
+            Else
+                ParticlesVelocity(I).Y = ParticlesVelocity(I).Y + 10
+            End If
+            If InRange(0, ParticlesPosition(I).X, _Width - 1) = 0 Then ParticlesVelocity(I).X = -ParticlesVelocity(I).X: ParticlesPosition(I).X = Clamp(0, ParticlesPosition(I).X, _Width - 1)
             For J = LBound(Bricks) To UBound(Bricks)
                 If Bricks(J).Alive = 0 Then _Continue
                 If InRange(-BRICK_SIZE_X / 2, ParticlesPosition(I).X - Bricks(J).Position.X, BRICK_SIZE_X / 2) Then
@@ -524,7 +536,7 @@ Sub NewLevel
     SLOW_BALL_SPEED = 0.6 * MAX_BALL_SPEED
     Level = Level + 1: LevelText$ = "Level" + Str$(Level)
     _Title "Breakout - Level" + Str$(Level): LevelShowTimer = 0
-    TOTAL_BRICKS = Clamp(8, TOTAL_BRICKS + IIF((Level Mod 20) <= 10, 8, -8), 64)
+    TOTAL_BRICKS = Clamp(8, TOTAL_BRICKS + IIF((Level Mod 20) <= 10, 8, -8), 64 + IIF((Level Mod 40) > 20, 16, 0))
     BACKUP_BALLS = BACKUP_BALLS + IIF(Level >= 5, 1, 0)
     If (Level Mod 2) = 0 And Len(Available_Powers$) < MAX_POWER_UPS Then Available_Powers$ = Available_Powers$ + Chr$(Len(Available_Powers$) + 1): NewPowerUpTimer = 0
     If (Level Mod 5) = 0 Then NewScreenHeight = Max(540, _Height + IIF((Level Mod 40) < 20, 60, -60))
@@ -619,7 +631,7 @@ Sub DrawPaddle
         Line (Paddle.X - New_Paddle_Size / 2 - I, Paddle.Y + I)-(Paddle.X + New_Paddle_Size / 2 + I, Paddle.Y + I), _RGB32(255)
     Next I
     Line (Paddle.X - New_Paddle_Size / 2 - 3, Paddle.Y + 4)-(Paddle.X + New_Paddle_Size / 2 + 3, Paddle.Y + 4), _RGB32(255)
-    If CurrentPowerUps(3) Then
+    If CurrentPowerUps(POWER_UP_BULLET_PADDLE) Then
         NewLaserPosition = -4
     Else
         NewLaserPosition = 0
