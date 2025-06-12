@@ -1,6 +1,6 @@
 '                     Google Breakout Clone
 '                      by Aaditya Parashar
-'                         Version 1.0.0
+'                         Version 1.2.5
 '
 ' Just Press F5... You have 3 balls to lose
 '                  You will get more balls when you reach level 5
@@ -17,7 +17,7 @@ Const PADDLE_SIZE = 100
 
 Const AI = 0
 Const AI_PADDLE_SPEED = 25
-Const GAME_SOUND = 1
+Const GAME_SOUND = 1 'Set this zero if game lags
 Const GAME_SPEED = 1
 Const FPS = 60
 Const MOUSE_SENSITIVITY = 1 ' Ratio
@@ -44,6 +44,8 @@ Const POWER_UP_FLOATING_BALL = 2
 Const POWER_UP_TNT_BRICK = 3
 Const POWER_UP_BULLET_PADDLE = 4
 Const POWER_UP_BIG_PADDLE = 5
+
+Const POWER_TEST = 0
 '---------------------
 
 Type Ball
@@ -80,6 +82,7 @@ Dim Shared As Brick Bricks(0)
 Dim Shared As _Unsigned Integer AI_Target_Brick
 
 Dim Shared Available_Powers$
+If POWER_TEST Then Available_Powers$ = MKL$(&H04030201) + Chr$(5)
 Dim Shared PowerUps(0 To 255) As PowerUp, CurrentPowerUps(0 To 255)
 
 Dim Shared As Vec2 ParticlesPosition(0 To 255), ParticlesVelocity(0 To 255)
@@ -106,6 +109,7 @@ Do
         NewScreenY = _ScreenY - (Level Mod 2)
         Paddle.Y = Paddle.Y + Sgn(NewScreenHeight - _Height)
         Screen _NewImage(_Width, _Height + Sgn(NewScreenHeight - _Height), 32)
+        Color -1, _RGB32(0, 31)
         If _FullScreen = 0 Then _ScreenMove NewScreenX, NewScreenY
     End If
     While _MouseInput
@@ -113,7 +117,11 @@ Do
         _MouseMove _Width / 2, _Height / 2
     Wend
     Paddle.X = Clamp(New_Paddle_Size / 2, Paddle.X + (_KeyDown(19200) - _KeyDown(19712)) * KEYBOARD_SENSITIVITY, _Width - New_Paddle_Size / 2)
-    If CurrentPowerUps(POWER_UP_BULLET_PADDLE) > 0 And _MouseButton(2) And Timer(0.1) - BulletShootTimer > 1 - Level / 50 Then BulletShootTimer = Timer(0.1): Bullet Paddle.X - New_Paddle_Size / 2 + 10, Paddle.Y: Bullet Paddle.X + New_Paddle_Size / 2 - 10, Paddle.Y: CurrentPowerUps(POWER_UP_BULLET_PADDLE) = CurrentPowerUps(POWER_UP_BULLET_PADDLE) - 1
+    If CurrentPowerUps(POWER_UP_BULLET_PADDLE) > 0 And _MouseButton(2) And Timer(0.1) - BulletShootTimer > 1 - Level / 50 Then
+        BulletShootTimer = Timer(0.1)
+        PaddleShootBullet
+        CurrentPowerUps(POWER_UP_BULLET_PADDLE) = Max(0, CurrentPowerUps(POWER_UP_BULLET_PADDLE) - FPS)
+    End If
     MOVING_BALLS = 0
 
     For B = LBound(Balls) To UBound(Balls)
@@ -139,7 +147,7 @@ Do
             Balls(B).Velocity.Y = -Balls(B).Velocity.Y
             Balls(B).Velocity.X = 10 * (Balls(B).Position.X - Paddle.X)
             BricksComboCount = 0
-            If CurrentPowerUps(POWER_UP_BULLET_PADDLE) Then Bullet Paddle.X - New_Paddle_Size / 2 + 10, Paddle.Y: Bullet Paddle.X + New_Paddle_Size / 2 - 10, Paddle.Y
+            If CurrentPowerUps(POWER_UP_BULLET_PADDLE) Then PaddleShootBullet
         End If
         '------------------------------
         'Simulate Ball Brick Collision
@@ -191,10 +199,10 @@ Do
     DrawBalls
     DrawBackupBalls
     DrawPaddle
-    DrawPowerUps
+    DrawPowerDrops
     PlaySound 0
     Particles 0, 0, 0
-    Power 0, 0, 0
+    PowerDrop 0, 0, 0
     Bullet 0, 0
     Bubble
     Explode 0, 0
@@ -209,7 +217,7 @@ Do
             Case 1: _Continue
             Case 2 To 5: Print GetPowerUpName$(I); ":";
         End Select
-        Print CurrentPowerUps(I); "seconds"
+        Print CurrentPowerUps(I) \ FPS; "seconds"
     Next I
     If InRange(LBound(Bricks), AI_Target_Brick, UBound(Bricks)) Then Print "AI_Target_Brick:"; Bricks(AI_Target_Brick).Position.X; Bricks(AI_Target_Brick).Position.Y
     If BricksComboCount > 1 Then
@@ -377,6 +385,11 @@ Sub Bubble
     End If
 End Sub
 
+Sub PaddleShootBullet
+    Bullet Paddle.X - New_Paddle_Size / 2 + 10, Paddle.Y
+    Bullet Paddle.X + New_Paddle_Size / 2 - 10, Paddle.Y
+End Sub
+
 Sub Bullet (X As Integer, Y As Integer)
     Static Bullets(0 To 255) As Vec2
     Static As _Unsigned _Byte BulletID, BulletsAlive(0 To 31), Brick_Collided
@@ -386,6 +399,7 @@ Sub Bullet (X As Integer, Y As Integer)
         Bullets(BulletID).Y = Y
         BulletsAlive(_SHR(BulletID, 3)) = _SetBit(BulletsAlive(_SHR(BulletID, 3)), BulletID And 7)
         BulletID = BulletID + 1
+        Exit Sub
     End If
     For I = 0 To 255
         If _ReadBit(BulletsAlive(_SHR(I, 3)), I And 7) = 0 Then _Continue
@@ -397,7 +411,7 @@ Sub Bullet (X As Integer, Y As Integer)
         Line (Bullets(I).X - 1, Bullets(I).Y - 7)-(Bullets(I).X + 1, Bullets(I).Y + 1), -1, BF
         If Bullets(I).Y > 0 And Brick_Collided = 0 Then _Continue
         BulletsAlive(_SHR(I, 3)) = _ResetBit(BulletsAlive(_SHR(I, 3)), I And 7)
-        If Brick_Collided Then Bricks(Brick_Collided).Alive = 0: BreakBrick Brick_Collided
+        If Brick_Collided Then BreakBrick Brick_Collided
     Next I
 End Sub
 
@@ -408,6 +422,7 @@ Sub Explode (X As Integer, Y As Integer)
         ExplosionPosition(ExplosionIterator).Y = Y
         ExplosionStates(ExplosionIterator) = 1
         ExplosionIterator = ExplosionIterator + 1
+        Exit Sub
     End If
     For I = 0 To 255
         Select Case ExplosionStates(I)
@@ -418,21 +433,22 @@ Sub Explode (X As Integer, Y As Integer)
     Next I
 End Sub
 
-Sub Power (X As Integer, Y As Integer, P As _Unsigned _Byte)
+Sub PowerDrop (X As Integer, Y As Integer, P As _Unsigned _Byte)
     Static As _Unsigned _Byte O
     If X Or Y Then
         NewVec2 PowerUps(O).Position, X, Y
         PowerUps(O).Power = P
         O = O + 1
+        Exit Sub
     End If
     For I = 0 To 255
         Select Case PowerUps(I).Power
             Case 0
-            Case POWER_UP_EXTRA_BALL: ApplyPowerUp PowerUps(I): PowerUps(I).Power = 0
+            Case POWER_UP_EXTRA_BALL: ApplyPowerDrop PowerUps(I): PowerUps(I).Power = 0
             Case POWER_UP_TNT_BRICK:
             Case Else: PowerUps(I).Position.Y = PowerUps(I).Position.Y + 4
-                If InRange(Paddle.X - New_Paddle_Size / 2, PowerUps(I).Position.X, Paddle.X + New_Paddle_Size / 2) And PowerUps(I).Position.Y + BALL_RADIUS > Paddle.Y Then
-                    ApplyPowerUp PowerUps(I)
+                If InRange(Paddle.X - New_Paddle_Size / 2 - BRICK_SIZE_X / 2, PowerUps(I).Position.X, Paddle.X + New_Paddle_Size / 2 + BRICK_SIZE_X / 2) And InRange(Paddle.Y, PowerUps(I).Position.Y + BALL_RADIUS, _Height) Then
+                    ApplyPowerDrop PowerUps(I)
                     PowerUps(I).Power = 0
                 End If
         End Select
@@ -441,7 +457,29 @@ Sub Power (X As Integer, Y As Integer, P As _Unsigned _Byte)
         End Select
     Next I
 End Sub
-Sub ApplyPowerUp (P As PowerUp)
+Sub DrawPowerUp (X As Integer, Y As Integer, P As _Unsigned _Byte)
+    __F& = _DefaultColor
+    __B& = _BackgroundColor
+    Select Case P
+        Case POWER_UP_EXTRA_BALL
+            Circle (X, Y), 5, -1
+            Circle (X, Y), 6, -1
+        Case POWER_UP_FLOATING_BALL
+            Circle (X, Y), 5, _RGB32(0, 0, 255, 127)
+            Circle (X, Y), 6, _RGB32(0, 0, 255, 127)
+        Case POWER_UP_TNT_BRICK
+            Color _RGB32(255, 0, 0, 127), 0
+            _PrintString (X - 3 * _FontWidth / 2, Y - _FontHeight / 2), "TNT"
+        Case POWER_UP_BULLET_PADDLE
+            Color -1, 0
+            _PrintString (X - 3 * _FontWidth / 2, Y - 4), Chr$(193) + Chr$(196) + Chr$(193)
+        Case POWER_UP_BIG_PADDLE
+            Color -1, 0
+            _PrintString (X - 5 * _FontWidth / 2, Y - _FontHeight / 2), Chr$(27) + Chr$(32) + Chr$(45) + Chr$(32) + Chr$(26)
+    End Select
+    Color __F&, __B&
+End Sub
+Sub ApplyPowerDrop (P As PowerUp)
     Select Case P.Power
         Case POWER_UP_EXTRA_BALL: CurrentPowerUps(1) = CurrentPowerUps(1) + 1 'Increment Balls
             CreateBall
@@ -495,7 +533,7 @@ Sub CreateBrick
     NewVec2 Bricks(BrickID).Position, X * 60 + 270, Y * 30 + IIF(Level > 1, -(1 + TOTAL_BRICKS \ 8) * 30, 75)
     Bricks(BrickID).Alive = 1
     Bricks(BrickID).Colour = GetRandomColour
-    If Rnd > 0.9 And Len(Available_Powers$) Then Bricks(BrickID).Power = Asc(Available_Powers$, 1 + Int(Rnd * Len(Available_Powers$)))
+    If Rnd > 0.9 And Len(Available_Powers$) Or POWER_TEST Then Bricks(BrickID).Power = Asc(Available_Powers$, 1 + Int(Rnd * Len(Available_Powers$)))
     X = X + 1
     If X = 0 Then Y = Y + 1
 End Sub
@@ -511,7 +549,7 @@ Sub BreakBrick (I As Integer)
             If ((I - 1) And 7) > 0 Then BreakBrick I - 9: BreakBrick I - 1: BreakBrick I + 7
             BreakBrick I - 8: BreakBrick I + 8
             If ((I - 1) And 7) < 7 Then BreakBrick I - 7: BreakBrick I + 1: BreakBrick I + 9
-        Case Else: Power Bricks(I).Position.X, Bricks(I).Position.Y, Bricks(I).Power
+        Case Else: PowerDrop Bricks(I).Position.X, Bricks(I).Position.Y, Bricks(I).Power
     End Select
 End Sub
 Sub DrawBricks
@@ -522,7 +560,7 @@ Sub DrawBricks
         dY = Bricks(I).FinalPosition.Y - Bricks(I).Position.Y
         Bricks(I).Position.X = Bricks(I).Position.X + Sgn(dX)
         Bricks(I).Position.Y = Bricks(I).Position.Y + Sgn(dY)
-        If Bricks(I).Power > 0 Then _PrintString (Bricks(I).Position.X - _FontWidth / 2, Bricks(I).Position.Y - _FontHeight / 2), _Trim$(Str$(Bricks(I).Power))
+        DrawPowerUp Bricks(I).Position.X, Bricks(I).Position.Y, Bricks(I).Power
     Next I
 End Sub
 Sub DrawBalls
@@ -563,14 +601,11 @@ Sub DrawPaddle
     Line (Paddle.X + New_Paddle_Size / 2 - 10, Paddle.Y + LaserPosition)-(Paddle.X + New_Paddle_Size / 2 - 10, Paddle.Y + LaserPosition + 4), -1, BF
     Line (Paddle.X + New_Paddle_Size / 2 - 9, Paddle.Y + LaserPosition + 1)-(Paddle.X + New_Paddle_Size / 2 - 9, Paddle.Y + LaserPosition + 4), -1, BF
 End Sub
-Sub DrawPowerUps
-    Static C&(0 To 255)
-    If C&(0) = 0 Then
-        For I = 0 To 255: C&(I) = GetRandomColour: Next I
-    End If
+Sub DrawPowerDrops
     For I = 0 To 255
         If PowerUps(I).Power = 0 Then _Continue
-        Line (PowerUps(I).Position.X - 10, PowerUps(I).Position.Y - 10)-(PowerUps(I).Position.X + 9, PowerUps(I).Position.Y + 9), C&(I), BF
+        Line (PowerUps(I).Position.X - BRICK_SIZE_X / 2, PowerUps(I).Position.Y - BRICK_SIZE_Y / 2)-(PowerUps(I).Position.X + BRICK_SIZE_X / 2, PowerUps(I).Position.Y + BRICK_SIZE_Y / 2), -1, B
+        DrawPowerUp PowerUps(I).Position.X, PowerUps(I).Position.Y, PowerUps(I).Power
     Next I
 End Sub
 
