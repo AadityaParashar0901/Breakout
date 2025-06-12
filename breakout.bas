@@ -371,11 +371,23 @@ Sub Particles (X As Integer, Y As Integer, C&)
             End If
             For J = LBound(Bricks) To UBound(Bricks)
                 If Bricks(J).Alive = 0 Then _Continue
-                If InRange(-BRICK_SIZE_X / 2, ParticlesPosition(I).X - Bricks(J).Position.X, BRICK_SIZE_X / 2) And InRange(-BRICK_SIZE_Y * 0.75, ParticlesPosition(I).Y - Bricks(J).Position.Y, -BRICK_SIZE_Y / 2) Then
-                    ParticlesVelocity(I).Y = 0
-                    ParticlesPosition(I).Y = Bricks(J).Position.Y - BRICK_SIZE_Y * 0.55
-                    ParticlesVelocity(I).X = ParticlesVelocity(I).X * 0.9
-                    ParticlesVelocity(I).X = -(ParticlesVelocity(I).X > 0.05) * ParticlesVelocity(I).X
+                If InRange(-BRICK_SIZE_X / 2, ParticlesPosition(I).X - Bricks(J).Position.X, BRICK_SIZE_X / 2) Then
+                    If InRange(-BRICK_SIZE_Y * 0.75, ParticlesPosition(I).Y - Bricks(J).Position.Y, -BRICK_SIZE_Y / 2) Then
+                        ParticlesVelocity(I).Y = 0
+                        ParticlesPosition(I).Y = Bricks(J).Position.Y - BRICK_SIZE_Y * 0.55
+                        ParticlesVelocity(I).X = ParticlesVelocity(I).X * 0.9
+                        ParticlesVelocity(I).X = -(ParticlesVelocity(I).X > 0.05) * ParticlesVelocity(I).X
+                    End If
+                    If InRange(BRICK_SIZE_Y / 2, ParticlesPosition(I).Y - Bricks(J).Position.Y, BRICK_SIZE_Y * 0.75) And Bricks(J).Colour = ParticlesColour(I) Then
+                        ParticlesVelocity(I).Y = 0
+                        ParticlesPosition(I).Y = Bricks(J).Position.Y + BRICK_SIZE_Y * 0.55
+                        ParticlesVelocity(I).X = ParticlesVelocity(I).X * 0.9
+                        ParticlesVelocity(I).X = -(ParticlesVelocity(I).X > 0.05) * ParticlesVelocity(I).X
+                    End If
+                End If
+                If InRange(-BRICK_SIZE_Y / 2, ParticlesPosition(I).Y - Bricks(J).Position.Y, BRICK_SIZE_Y / 2) Then
+                    If InRange(-BRICK_SIZE_X * 0.55, ParticlesPosition(I).X - Bricks(J).Position.X, -BRICK_SIZE_X / 2) Then ParticlesVelocity(I).X = -ParticlesVelocity(I).X
+                    If InRange(BRICK_SIZE_X / 2, ParticlesPosition(I).X - Bricks(J).Position.X, BRICK_SIZE_X * 0.55) Then ParticlesVelocity(I).X = -ParticlesVelocity(I).X
                 End If
             Next J
             Line (ParticlesPosition(I).X - BRICK_SIZE_X / 20, ParticlesPosition(I).Y - BRICK_SIZE_Y / 20)-(ParticlesPosition(I).X + BRICK_SIZE_X / 20, ParticlesPosition(I).Y + BRICK_SIZE_Y / 20), ParticlesColour(I), BF
